@@ -40,18 +40,17 @@ Napi::Array GetPhoneNumbers(Napi::Env env, CNContact *cncontact) {
 }
 
 Napi::Array GetPostalAddresses(Napi::Env env, CNContact *cncontact) {
-  bool haveAddr = [[cncontact postalAddresses] count] > 0;
-  Napi::Object address = Napi::Object::New(env);
-  CNPostalAddress *cnaddress;
-  if (haveAddr) {
-    cnaddress = [[[cncontact postalAddresses] valueForKey:@"value"] objectAtIndex: 0];
-    address.Set("pref", true);
-    address.Set("streetAddress", [[cnaddress street] UTF8String]);
-    address.Set("locality", [[cnaddress city] UTF8String]);
-    address.Set("region", [[cnaddress state] UTF8String]);
-    address.Set("postalCode", [[cnaddress postalCode] UTF8String]);
-    address.Set("country", [[cnaddress country] UTF8String]);
+  if ([[cncontact postalAddresses] count] < 1) {
+    return Napi::Array::New(env, 0);
   }
+  Napi::Object address = Napi::Object::New(env);
+  CNPostalAddress *cnaddress = [[[cncontact postalAddresses] valueForKey:@"value"] objectAtIndex: 0];
+  address.Set("pref", true);
+  address.Set("streetAddress", [[cnaddress street] UTF8String]);
+  address.Set("locality", [[cnaddress city] UTF8String]);
+  address.Set("region", [[cnaddress state] UTF8String]);
+  address.Set("postalCode", [[cnaddress postalCode] UTF8String]);
+  address.Set("country", [[cnaddress country] UTF8String]);
   Napi::Array postal_addresses = Napi::Array::New(env, 1);
   postal_addresses[(int)0] = address;
 
@@ -184,79 +183,6 @@ Napi::Object GetMe(const Napi::CallbackInfo &info) {
   return CreateContact(env, cncontact);
 }
 
-// Napi::Array GetContactsByName(const Napi::CallbackInfo &info) {
-//   Napi::Env env = info.Env();
-//   Napi::Array contacts = Napi::Array::New(env);
-
-//   if (AuthStatus() != CNAuthorizationStatusAuthorized)
-//     return contacts;
-
-//   const std::string name_string = info[0].As<Napi::String>().Utf8Value();
-//   NSArray *cncontacts = FindContacts(name_string);
-  
-//   int num_contacts = [cncontacts count];
-//   for (int i = 0; i < num_contacts; i++) {
-//     CNContact *cncontact = [cncontacts objectAtIndex:i];
-//     contacts[i] = CreateContact(env, cncontact);
-//   }
-
-//   return contacts;
-// }
-
-// Napi::Boolean AddNewContact(const Napi::CallbackInfo &info) {
-//   Napi::Env env = info.Env();
-//   CNContactStore *addressBook = [[CNContactStore alloc] init];
-
-//   if (AuthStatus() != CNAuthorizationStatusAuthorized)
-//     return Napi::Boolean::New(env, false);
-
-//   Napi::Object contact_data = info[0].As<Napi::Object>();
-//   CNMutableContact *contact = CreateCNMutableContact(contact_data);
-
-//   CNSaveRequest *request = [[CNSaveRequest alloc] init];
-//   [request addContact:contact toContainerWithIdentifier:nil];
-//   bool success = [addressBook executeSaveRequest:request error:nil];
-
-//   return Napi::Boolean::New(env, success);
-// }
-
-// Napi::Value DeleteContact(const Napi::CallbackInfo &info) {
-//   Napi::Env env = info.Env();
-
-//   if (AuthStatus() != CNAuthorizationStatusAuthorized)
-//     return Napi::Boolean::New(env, false);
-
-//   const std::string name_string = info[0].As<Napi::String>().Utf8Value();
-//   NSArray *cncontacts = FindContacts(name_string);
-  
-//   CNContact *contact = (CNContact*)[cncontacts objectAtIndex:0];
-//   CNSaveRequest *request = [[CNSaveRequest alloc] init];
-//   [request deleteContact:[contact mutableCopy]];
-  
-//   CNContactStore *addressBook = [[CNContactStore alloc] init];
-//   bool success = [addressBook executeSaveRequest:request error:nil];
-
-//   return Napi::Boolean::New(env, success);
-// }
-
-// Napi::Value UpdateContact(const Napi::CallbackInfo &info) {
-//   Napi::Env env = info.Env();
-
-//   if (AuthStatus() != CNAuthorizationStatusAuthorized)
-//     return Napi::Boolean::New(env, false);
-
-//   Napi::Object contact_data = info[0].As<Napi::Object>();
-  
-//   CNMutableContact *contact = CreateCNMutableContact(contact_data);
-//   CNSaveRequest *request = [[CNSaveRequest alloc] init];
-//   [request updateContact:contact];
-  
-//   CNContactStore *addressBook = [[CNContactStore alloc] init];
-//   bool success = [addressBook executeSaveRequest:request error:nil];
-
-//   return Napi::Boolean::New(env, success);
-// }
-
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(
     Napi::String::New(env, "getAuthStatus"), Napi::Function::New(env, GetAuthStatus)
@@ -267,19 +193,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(
     Napi::String::New(env, "getMe"), Napi::Function::New(env, GetMe)
   );
-  // exports.Set(
-  //   Napi::String::New(env, "getContactsByName"), Napi::Function::New(env, GetContactsByName)
-  // );
-  // exports.Set(
-  //   Napi::String::New(env, "addNewContact"), Napi::Function::New(env, AddNewContact)
-  // );
-  // exports.Set(
-  //   Napi::String::New(env, "deleteContact"), Napi::Function::New(env, DeleteContact)
-  // );
-  // exports.Set(
-  //   Napi::String::New(env, "updateContact"), Napi::Function::New(env, UpdateContact)
-  // );
-
   return exports;
 }
 
