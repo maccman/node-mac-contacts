@@ -1,82 +1,51 @@
 const contacts = require('./build/Release/contacts.node')
 
-function getContactsByName(name) {
-  if (typeof name !== 'string') throw new TypeError('name must be a string')
-
-  return contacts.getContactsByName.call(this, name)
+function decodeLabel(label) {
+	if (label.substring(0, 3) == "_$!") {
+		let items = label.match(/<(.*)>/);
+		if (items) {
+			label = items[1];
+		}
+	}
+	return label.toLowerCase();
 }
 
-function addNewContact(contact) {
-  if (!contact || Object.keys(contact).length === 0) {
-    throw new TypeError('contact must be a non-empty object')
-  } else {
-    const hasFirstName = contact.hasOwnProperty('firstName')
-    const hasLastName = contact.hasOwnProperty('lastName')
-    const hasNickname = contact.hasOwnProperty('nickname')
-    const hasBirthday = contact.hasOwnProperty('birthday')
-    const hasPhoneNumbers = contact.hasOwnProperty('phoneNumbers')
-    const hasEmailAddresses = contact.hasOwnProperty('emailAddresses')
-
-    if (hasFirstName && typeof contact.firstName !== 'string') throw new TypeError('firstName must be a string')
-    if (hasLastName && typeof contact.lastName !== 'string') throw new TypeError('lastName must be a string')
-    if (hasNickname && typeof contact.nickname !== 'string') throw new TypeError('nickname must be a string')
-    if (hasPhoneNumbers && !Array.isArray(contact.phoneNumbers)) throw new TypeError('phoneNumbers must be an array')
-    if (hasEmailAddresses && !Array.isArray(contact.emailAddresses)) throw new TypeError('emailAddresses must be an array')
-
-    if (hasBirthday) {
-      const datePattern = /^\d{4}\-(0[1-9]|1[012])\-(0[1-9]|[12][0-9]|3[01])$/
-      if (typeof contact.birthday !== 'string') {
-        throw new TypeError('birthday must be a string')
-      } else if (!contact.birthday.match(datePattern)) {
-        throw new Error('birthday must use YYYY-MM-DD format')
-      }
-    }
-  }
-
-  return contacts.addNewContact.call(this, contact)
+function decodeLabeledArray(arr) {
+	let newArr = [];
+	if (arr && arr.length) {
+		for (let n = 0; n < arr.length; n++) {
+			newArr.push({
+				type: decodeLabel(arr[n].type),
+				value: arr[n].value || null
+			});
+		}
+	}
+	return newArr;
 }
 
-function updateContact(contact) {
-  if (!contact || Object.keys(contact).length === 0) {
-    throw new TypeError('contact must be a non-empty object')
-  } else {
-    const hasFirstName = contact.hasOwnProperty('firstName')
-    const hasLastName = contact.hasOwnProperty('lastName')
-    const hasNickname = contact.hasOwnProperty('nickname')
-    const hasBirthday = contact.hasOwnProperty('birthday')
-    const hasPhoneNumbers = contact.hasOwnProperty('phoneNumbers')
-    const hasEmailAddresses = contact.hasOwnProperty('emailAddresses')
-
-    if (hasFirstName && typeof contact.firstName !== 'string') throw new TypeError('firstName must be a string')
-    if (hasLastName && typeof contact.lastName !== 'string') throw new TypeError('lastName must be a string')
-    if (hasNickname && typeof contact.nickname !== 'string') throw new TypeError('nickname must be a string')
-    if (hasPhoneNumbers && !Array.isArray(contact.phoneNumbers)) throw new TypeError('phoneNumbers must be an array')
-    if (hasEmailAddresses && !Array.isArray(contact.emailAddresses)) throw new TypeError('emailAddresses must be an array')
-
-    if (hasBirthday) {
-      const datePattern = /^\d{4}\-(0[1-9]|1[012])\-(0[1-9]|[12][0-9]|3[01])$/
-      if (typeof contact.birthday !== 'string') {
-        throw new TypeError('birthday must be a string')
-      } else if (!contact.birthday.match(datePattern)) {
-        throw new Error('birthday must use YYYY-MM-DD format')
-      }
-    }
-  }
-
-  return contacts.updateContact.call(this, contact)
+function contactObject(abObject) {
+	return {
+		...abObject,
+		emails: decodeLabeledArray(abObject.emails),
+		phoneNumbers: decodeLabeledArray(abObject.phoneNumbers),
+		image: abObject.image || null
+	};
 }
 
-function deleteContact(name) {
-  if (typeof name !== 'string') throw new TypeError('name must be a string')
+function getMe() {
+  return contactObject(contacts.getMe())
+}
 
-  return contacts.deleteContact.call(this, name)
+function getAllContacts() {
+	let contactList = [];
+	contacts.getAllContacts().forEach(c => {
+		contactList.push(contactObject(c))
+	});
+	return contactList;
 }
 
 module.exports = {
   getAuthStatus: contacts.getAuthStatus,
-  getAllContacts: contacts.getAllContacts,
-  getContactsByName,
-  addNewContact,
-  deleteContact,
-  updateContact
+  getAllContacts: getAllContacts,
+  getMe: getMe
 }
