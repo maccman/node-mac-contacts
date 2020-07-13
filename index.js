@@ -33,7 +33,8 @@ function contactObject(abObject) {
 }
 
 function getMe() {
-  return contactObject(contacts.getMe())
+  let me = contacts.getMe();
+  return Object.getOwnPropertyNames(me).length ? contactObject(me) : {};
 }
 
 function getAllContacts() {
@@ -45,6 +46,7 @@ function getAllContacts() {
 }
 
 module.exports = {
+  requestAuthStatus: contacts.requestAuthStatus,
   getAuthStatus: contacts.getAuthStatus,
   getAllContacts: getAllContacts,
   getMe: getMe

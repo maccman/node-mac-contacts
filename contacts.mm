@@ -127,8 +127,22 @@ NSArray* GetContactKeys() {
   return keys;
 }
 
-
 /***** EXPORTED FUNCTIONS *****/
+
+Napi::Value RequestAuthStatus(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+  CNContactStore *addressBook = [[CNContactStore alloc] init];
+  [addressBook requestAccessForEntityType:CNEntityTypeContacts completionHandler:^(BOOL granted, NSError *error){
+    if (!error) {
+      deferred.Resolve(Napi::Boolean::New(env, granted));
+    } else {
+      deferred.Reject(Napi::Number::New(env, error.code));
+    }
+  }];
+  return deferred.Promise();
+}
+
 
 Napi::Value GetAuthStatus(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
@@ -150,40 +164,40 @@ Napi::Array GetAllContacts(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::Array contacts = Napi::Array::New(env);
   CNContactStore *addressBook = [[CNContactStore alloc] init];
-  
-  if (AuthStatus() != CNAuthorizationStatusAuthorized)
-    return contacts;
+  NSError *error = nil;
 
   NSPredicate *predicate = [CNContact predicateForContactsInContainerWithIdentifier:addressBook.defaultContainerIdentifier];
 	NSArray *cncontacts = [addressBook unifiedContactsMatchingPredicate:predicate 
                                                           keysToFetch:GetContactKeys() 
-                                                                error:nil];
-  
+                                                                error:&error];
+  if (error) {
+    return contacts;
+  }
   int num_contacts = [cncontacts count];
   for (int i = 0; i < num_contacts; i++) {
     CNContact *cncontact = [cncontacts objectAtIndex:i];
     contacts[i] = CreateContact(env, cncontact);
   }
-
   return contacts;
 }
 
 Napi::Object GetMe(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::Object noContact = Napi::Object::New(env);
-  if (AuthStatus() != CNAuthorizationStatusAuthorized)
-    return noContact;
-
   CNContactStore *addressBook = [[CNContactStore alloc] init];
+  NSError *error = nil;
 
-  CNContact *cncontact = [addressBook unifiedMeContactWithKeysToFetch:GetContactKeys() error:nil];
-  if (!cncontact) {
+  CNContact *cncontact = [addressBook unifiedMeContactWithKeysToFetch:GetContactKeys() error:&error];
+  if (!cncontact || error) {
     return noContact;
   }
   return CreateContact(env, cncontact);
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+  exports.Set(
+    Napi::String::New(env, "requestAuthStatus"), Napi::Function::New(env, RequestAuthStatus)
+  );
   exports.Set(
     Napi::String::New(env, "getAuthStatus"), Napi::Function::New(env, GetAuthStatus)
   );
