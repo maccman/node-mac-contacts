@@ -11,16 +11,12 @@ function decodeLabel(label) {
 }
 
 function decodeLabeledArray(arr) {
-	let newArr = [];
-	if (arr && arr.length) {
-		for (let n = 0; n < arr.length; n++) {
-			newArr.push({
-				type: decodeLabel(arr[n].type),
-				value: arr[n].value || null
-			});
+	return arr ? arr.map(i => {
+		return {
+			type: decodeLabel(i.type),
+			value: i.value || null
 		}
-	}
-	return newArr;
+	}) : [];
 }
 
 function contactObject(abObject) {
@@ -38,11 +34,7 @@ function getMe() {
 }
 
 function getAllContacts() {
-	let contactList = [];
-	contacts.getAllContacts().forEach(c => {
-		contactList.push(contactObject(c))
-	});
-	return contactList;
+	return contacts.getAllContacts().map(c => contactObject(c));
 }
 
 module.exports = {
