@@ -3,39 +3,53 @@
 
 /***** HELPERS *****/
 
-Napi::Array GetEmailAddresses(Napi::Env env, CNContact *cncontact) {
-  int num_email_addresses = [[cncontact emailAddresses] count];
-
-  Napi::Array email_addresses = Napi::Array::New(env, num_email_addresses);
-  NSArray <CNLabeledValue<NSString*>*> *emailAddresses = [cncontact emailAddresses];
-  for (int i = 0; i < num_email_addresses; i++) {
-    CNLabeledValue<NSString*> *email_address = [emailAddresses objectAtIndex:i];
-    Napi::Object email = Napi::Object::New(env);
-    NSString *label = [email_address label];
-    NSString *value = [email_address value];
-    email.Set("type", std::string([label UTF8String]));
-    email.Set("value", std::string([value UTF8String]));
-    email_addresses[i] = email;
+NSString *DecodeLabel(NSString *label) {
+  label = [label lowercaseString];
+  if (label.length < 6 || [[label substringToIndex:2] isEqualToString:@"_$!"])  {
+    return label;
   }
+  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"<(.*)>" options:0 error:nil];
+  NSRange range = [regex rangeOfFirstMatchInString:label options:0 range:NSMakeRange(0,label.length)];
+  if (range.location == NSNotFound) {
+    return label;
+  }
+  return [label substringWithRange:NSMakeRange(range.location+1,range.length-2)];
+}
 
+Napi::Object DecodeError(Napi::Env env, NSError *error) {
+  Napi::Object obj = Napi::Object::New(env);
+  obj.Set("code", Napi::Number::New(env, error.code));
+  obj.Set("message", Napi::String::New(env, [[error localizedDescription] UTF8String]));
+  return obj;
+}
+
+Napi::Array GetEmailAddresses(Napi::Env env, CNContact *cncontact) {
+  NSArray <CNLabeledValue<NSString*>*> *emailAddresses = [cncontact emailAddresses];
+  Napi::Array email_addresses = Napi::Array::New(env);
+  int count = 0;
+  for (CNLabeledValue<NSString*> *email_address in emailAddresses) {
+    if (email_address.value.length > 0) {
+      Napi::Object email = Napi::Object::New(env);
+      email.Set("type", std::string([DecodeLabel([email_address label]) UTF8String]));
+      email.Set("value", std::string([[email_address value] UTF8String]));
+      email_addresses[count++] = email;
+    }
+  }
   return email_addresses;
 }
 
 Napi::Array GetPhoneNumbers(Napi::Env env, CNContact *cncontact) {
-  int num_phone_numbers = [[cncontact phoneNumbers] count];
-
-  Napi::Array phone_numbers = Napi::Array::New(env, num_phone_numbers);
   NSArray <CNLabeledValue<CNPhoneNumber*>*> *phoneNumbers = [cncontact phoneNumbers];
-  for (int i = 0; i < num_phone_numbers; i++) {
-    CNLabeledValue<CNPhoneNumber*> *cnphone = [phoneNumbers objectAtIndex:i];
-    Napi::Object phone = Napi::Object::New(env);
-    NSString *label = [cnphone label];
-    CNPhoneNumber *number = [cnphone value];
-    phone.Set("type", std::string([label UTF8String]));
-    phone.Set("value", std::string([[number stringValue] UTF8String]));
-    phone_numbers[i] = phone;
+  Napi::Array phone_numbers = Napi::Array::New(env);
+  int count = 0;
+  for (CNLabeledValue<CNPhoneNumber*> *cnphone in phoneNumbers) {
+    if ([cnphone.value stringValue].length > 0) {
+      Napi::Object phone = Napi::Object::New(env);
+      phone.Set("type", std::string([DecodeLabel([cnphone label]) UTF8String]));
+      phone.Set("value", std::string([[cnphone.value stringValue] UTF8String]));
+      phone_numbers[count++] = phone;
+    }
   }
-
   return phone_numbers;
 }
 
@@ -98,8 +112,6 @@ Napi::Object CreateContact(Napi::Env env, CNContact *cncontact) {
 
   if ([cncontact imageDataAvailable]) {
     contact.Set("image", std::string([[[cncontact thumbnailImageData] base64EncodedStringWithOptions:0] UTF8String]));
-  } else {
-    contact.Set("image", "");
   }
 
   return contact;
@@ -137,7 +149,7 @@ Napi::Value RequestAuthStatus(const Napi::CallbackInfo &info) {
     if (!error) {
       deferred.Resolve(Napi::Boolean::New(env, granted));
     } else {
-      deferred.Reject(Napi::Number::New(env, error.code));
+      deferred.Reject(DecodeError(env, error));
     }
   }];
   return deferred.Promise();
@@ -160,8 +172,55 @@ Napi::Value GetAuthStatus(const Napi::CallbackInfo &info) {
   return Napi::Value::From(env, auth_status);
 }
 
-Napi::Array GetAllContacts(const Napi::CallbackInfo &info) {
+Napi::Promise GetAllContactIds(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+  NSError *error = nil;
+  CNContactStore *addressBook = [[CNContactStore alloc] init];
+  NSPredicate *predicate = [CNContact predicateForContactsInContainerWithIdentifier:addressBook.defaultContainerIdentifier];
+  NSArray *list = [addressBook unifiedContactsMatchingPredicate:predicate
+                                                    keysToFetch:@[]
+                                                          error:&error];
+  if (error) {
+    deferred.Reject(DecodeError(env, error));
+  } else {
+    int count = 0;
+    Napi::Array identifiers = Napi::Array::New(env);
+    for (CNContact *cncontact in list) {
+      identifiers[count++] = std::string([[cncontact identifier] UTF8String]);
+    }
+    deferred.Resolve(identifiers);
+  }
+  return deferred.Promise();
+}
+
+Napi::Promise GetContactById(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+  if (info.Length() < 1) {
+    Napi::Object eobj = Napi::Object::New(env);
+    eobj.Set("message", Napi::Value::From(env,"Parameter <indentifier> missing"));
+    deferred.Reject(eobj);
+  } else {
+    std::string parameter = info[0].As<Napi::String>().Utf8Value();
+    NSString *identifier = [NSString stringWithUTF8String:parameter.c_str()];
+    CNContactStore *addressBook = [[CNContactStore alloc] init];
+    NSError *error = nil;
+    CNContact *cncontact = [addressBook unifiedContactWithIdentifier:identifier keysToFetch:GetContactKeys() error:&error];
+    if (error) {
+      deferred.Reject(DecodeError(env, error));
+    } else if (!cncontact) {
+      deferred.Reject(DecodeError(env, (NSError *)@{@"code": @200, @"localizedDescription":@"No such contact"}));
+    } else {
+      deferred.Resolve(CreateContact(env, cncontact));
+    }
+  }
+  return deferred.Promise();
+}
+
+Napi::Promise GetAllContacts(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
   Napi::Array contacts = Napi::Array::New(env);
   CNContactStore *addressBook = [[CNContactStore alloc] init];
   NSError *error = nil;
@@ -171,27 +230,32 @@ Napi::Array GetAllContacts(const Napi::CallbackInfo &info) {
                                                           keysToFetch:GetContactKeys() 
                                                                 error:&error];
   if (error) {
-    return contacts;
+    deferred.Reject(DecodeError(env, error));
+  } else {
+    int count = 0;
+    for (CNContact *cncontact in cncontacts) {
+      contacts[count++] = CreateContact(env, cncontact);
+    }
+    deferred.Resolve(contacts);
   }
-  int num_contacts = [cncontacts count];
-  for (int i = 0; i < num_contacts; i++) {
-    CNContact *cncontact = [cncontacts objectAtIndex:i];
-    contacts[i] = CreateContact(env, cncontact);
-  }
-  return contacts;
+  return deferred.Promise();
 }
 
-Napi::Object GetMe(const Napi::CallbackInfo &info) {
+Napi::Promise GetMe(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
-  Napi::Object noContact = Napi::Object::New(env);
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
   CNContactStore *addressBook = [[CNContactStore alloc] init];
   NSError *error = nil;
 
   CNContact *cncontact = [addressBook unifiedMeContactWithKeysToFetch:GetContactKeys() error:&error];
-  if (!cncontact || error) {
-    return noContact;
+  if (error) {
+    deferred.Reject(DecodeError(env, error));
+  } else if (!cncontact) {
+    deferred.Reject(DecodeError(env, (NSError *)@{@"code": @200, @"localizedDescription":@"No such contact"}));
+  } else {
+    deferred.Resolve(CreateContact(env, cncontact));
   }
-  return CreateContact(env, cncontact);
+  return deferred.Promise();
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -202,7 +266,13 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::String::New(env, "getAuthStatus"), Napi::Function::New(env, GetAuthStatus)
   );
   exports.Set(
+    Napi::String::New(env, "getAllContactIds"), Napi::Function::New(env, GetAllContactIds)
+  );
+  exports.Set(
     Napi::String::New(env, "getAllContacts"), Napi::Function::New(env, GetAllContacts)
+  );
+  exports.Set(
+    Napi::String::New(env, "getContactById"), Napi::Function::New(env, GetContactById)
   );
   exports.Set(
     Napi::String::New(env, "getMe"), Napi::Function::New(env, GetMe)
