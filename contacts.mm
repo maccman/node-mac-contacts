@@ -24,8 +24,11 @@ Napi::Object DecodeError(Napi::Env env, NSError *error) {
 }
 
 Napi::Array GetEmailAddresses(Napi::Env env, CNContact *cncontact) {
-  NSArray <CNLabeledValue<NSString*>*> *emailAddresses = [cncontact emailAddresses];
+  if ([[cncontact emailAddresses] count] < 1) {
+    return Napi::Array::New(env, 0);
+  }
   Napi::Array email_addresses = Napi::Array::New(env);
+  NSArray <CNLabeledValue<NSString*>*> *emailAddresses = [cncontact emailAddresses];
   int count = 0;
   for (CNLabeledValue<NSString*> *email_address in emailAddresses) {
     if (email_address.value.length > 0) {
@@ -39,8 +42,11 @@ Napi::Array GetEmailAddresses(Napi::Env env, CNContact *cncontact) {
 }
 
 Napi::Array GetPhoneNumbers(Napi::Env env, CNContact *cncontact) {
-  NSArray <CNLabeledValue<CNPhoneNumber*>*> *phoneNumbers = [cncontact phoneNumbers];
+  if ([[cncontact phoneNumbers] count] < 1) {
+    return Napi::Array::New(env, 0);
+  }
   Napi::Array phone_numbers = Napi::Array::New(env);
+  NSArray <CNLabeledValue<CNPhoneNumber*>*> *phoneNumbers = [cncontact phoneNumbers];
   int count = 0;
   for (CNLabeledValue<CNPhoneNumber*> *cnphone in phoneNumbers) {
     if ([cnphone.value stringValue].length > 0) {
